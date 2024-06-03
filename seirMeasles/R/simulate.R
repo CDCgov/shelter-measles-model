@@ -115,16 +115,14 @@ do_vaccinations <- function(x, doses, ve, ve_infant, prop_vax_to_se) {
   x
 }
 
-#' Run one simulation
+#' Clean parameters list
 #'
-#' @param params named list of parameters
-#' @param ... additional arguments passed to [seirMeasles::ssa()]
+#' The parameters that are read in from `params.yaml` needs a few tweaks before
+#' they can get passed into the main simulation function
 #'
-#' @return tibble
-#'
-#' @export
-simulate <- function(params, ...) {
-  # ensure parameters are normalized
+#' @param params named list; parameter set
+#' @return parameter set
+clean_parameters <- function(params) {
   start_date <- lubridate::ymd(params$start_date)
 
   params <- purrr::modify_at(
@@ -135,10 +133,42 @@ simulate <- function(params, ...) {
 
   stopifnot(length(params$vaccine_days) == length(params$vaccine_doses))
 
+  # for annoying reasons, the YAML must have NAs, but `generate_inputs()`
+  # expects NULL, so we just swap between them here
+  params <- purrr::modify_at(
+    params,
+    c("vaccine_days", "vaccine_doses"),
+    function(x) {
+      if (length(x) == 1 && is.na(x)) {
+        NULL
+      } else {
+        x
+      }
+    }
+  )
+
+  params
+}
+
+#' Run one simulation
+#'
+#' @param params named list of parameters
+#' @param ... additional arguments passed to [seirMeasles::ssa()]
+#'
+#' @return tibble
+#'
+#' @export
+simulate <- function(params, ...) {
+  params <- clean_parameters(params)
+
   # generate the "manual" inputs
   manual_inputs <- generate_inputs(
     vaccine_doses = params$vaccine_doses,
-    vaccine_days = params$vaccine_days + params$immunity_onset_delay,
+    vaccine_days = (
+      params$vaccine_days +
+        params$vaccine_days_offset +
+        params$immunity_onset_delay
+    ),
     import_days = params$import_days
   )
 

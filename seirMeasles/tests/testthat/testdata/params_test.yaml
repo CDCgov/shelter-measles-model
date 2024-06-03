@@ -43,6 +43,7 @@ history:
   import_days: 2024-02-22
   vaccine_doses: [277, 276, 343]
   vaccine_days: [2024-03-08, 2024-03-09, 2024-03-10]
+  vaccine_days_offset: 0
 
   # no. of days from administration of vaccine to onset of immunity
   # this must be a scalar, because of the way inputs work

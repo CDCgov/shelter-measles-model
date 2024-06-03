@@ -1,6 +1,6 @@
 # Model of 2024 Chicago measles outbreak
 
-Code to accompany Masters et al., "Real-Time Use of a Dynamic Model to  Measure the Impact of Public Health Interventions on Measles Outbreak Size and Duration — Chicago, Illinois, 2024", _MMWR_ (2024) (doi: [10.15585/mmwr.mm7319a2](http://dx.doi.org/10.15585/mmwr.mm7319a2))
+Code to accompany Masters et al., "Real-Time Use of a Dynamic Model to Measure the Impact of Public Health Interventions on Measles Outbreak Size and Duration — Chicago, Illinois, 2024", _MMWR_ (2024) (doi: [10.15585/mmwr.mm7319a2](http://dx.doi.org/10.15585/mmwr.mm7319a2))
 
 ## Repo organization
 
@@ -23,24 +23,24 @@ Otherwise, you will need to `remotes::install_local("seirMeasles")` or `devtools
 The workflow is:
 
 1. `source("scripts/run_abc.R")`: Develop intuition about parameter selection using approximate Bayesian computation (ABC).
-    - `output/abc.csv` gives IQRs for prior and posterior values for $R_0$ and `int_eff`.
-    - `output/abc.png` visualizes the prior and posterior densities for these variables.
+   - `output/abc.csv` gives IQRs for prior and posterior values for $R_0$ and `int_eff`.
+   - `output/abc.png` visualizes the prior and posterior densities for these variables.
 2. `source("scripts/run_simulations.R")`: Use default parameters to produce simulated trajectories.
-    - Simulations are stored in `output/simulations/`
+   - Simulations are stored in `output/simulations/`
 3. `source("scripts/run_forecasts.R")`: Select a subset of trajectories as forecasts and analyze them.
-    - `output/diagnostic_forecasts.png` shows selected forecast trajectories.
-    - `output/table1.csv` is Table 1 in the publication.
+   - `output/diagnostic_forecasts.png` shows selected forecast trajectories.
+   - `output/table1.csv` is Table 1 in the publication.
 4. `source("scripts/run_scenarios.R")`: Summarize outcomes across counterfactual scenarios (e.g., to look at cases averted by vaccination and interventions).
-    - `output/diagnostic_scenarios.png` shows a subset of counterfactual trajectories, with observed data.
-    - `output/table2.csv` is Table 2 in the publication.
-    - `output/figure1.png` is similar to Figure 1 in the publication.
-    - `output/figure1_summary.csv` are underlying values used to produce Figure 1.
+   - `output/diagnostic_scenarios.png` shows a subset of counterfactual trajectories, with observed data.
+   - `output/table2.csv` is Table 2 in the publication.
+   - `output/figure1.png` is similar to Figure 1 in the publication.
+   - `output/figure1_summary.csv` are underlying values used to produce Figure 1.
 
 The script `scripts/check_output_hash.R` runs the workflow above and saves a hash of all output files. If you refactor the code without changing functionality, this script can confirm that the outputs are identical.
 
 ## Model description
 
-This is a modified version of the Operation Allies Welcome (OAW) model described in [Masters et al. *Lancet Public Health* (2023)](<https://doi.org/10.1016/S2468-2667(23)00130-5>).
+This is a modified version of the Operation Allies Welcome (OAW) model described in [Masters et al. _Lancet Public Health_ (2023)](<https://doi.org/10.1016/S2468-2667(23)00130-5>).
 
 ### Updates from the OAW model
 
@@ -96,7 +96,7 @@ The OAW model and this model are both stochastic (Gillespie) compartmental (SEIR
 
 ### Parameters
 
-Default model parameters are in [`params.yaml`](inst/params.yaml).
+Default model parameters are in [`params.yaml`](inst/params.yaml). The parameter specification is in [griddler](https://github.com/CDCgov/griddleR) format.
 
 ### Known model limitations
 

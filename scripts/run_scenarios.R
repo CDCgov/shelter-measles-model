@@ -2,21 +2,21 @@
 
 library(tidyverse)
 
-# select value of R0 to use
-input_simulations_path <- "output/simulations"
+# Set plotting parameters -----------------------------------------------------
 n_trajectories_plot <- 100
+max_day <- 150
 
 scenarios_to_plot <- tibble(
   label = c("No vax, no int", "Baseline"),
-  scenario = c("No_vaccination", "March_08"),
-  int_day = c("No_intervention", "March_08")
+  vaccine_scenario = c("no_vaccination", "baseline"),
+  int_scenario = c("no_intervention", "baseline")
 )
 
 # Read in data -----------------------------------------------------------------
 
-config <- seirMeasles::read_params(
-  system.file("params.yaml", package = "seirMeasles", mustWork = TRUE)
-)
+case_series <- read_csv("input/case_series.csv")
+
+results_path <- "output/results"
 
 #' Check that the arrow dataset has unique label/iteration/day combinations,
 #' which means eg there are not multiple, unexpected gridded parameter values
@@ -24,7 +24,7 @@ check_scenarios <- function(df) {
   stopifnot(nrow(collect(head(df))) > 0)
 
   ns <- df |>
-    count(scenario, int_day, sim, day) |>
+    count(vaccine_scenario, int_scenario, int_day, replicate, day) |>
     select(n) |>
     distinct() |>
     collect() |>
@@ -34,28 +34,32 @@ check_scenarios <- function(df) {
   df
 }
 
-simulations <- arrow::open_dataset(input_simulations_path) |>
-  mutate(across(r_0, as.numeric)) |>
-  select(scenario, int_day, r_0, sim, day, reported_cases)
+results <- griddleR::query_cache(results_path)
 
-# check that there is only one R0 value
-simulations |>
+# check that we don't have unexpected varying parameters
+results |>
   check_scenarios()
 
-case_series <- read_csv("input/case_series.csv")
+# get the (unique) start date
+start_date <- results |>
+  select(start_date) |>
+  distinct() |>
+  collect() |>
+  pull(start_date) |>
+  lubridate::ymd()
+
+stopifnot(length(start_date) == 1)
 
 # Plot a selection of simulations ----------------------------------------------
 
-simulations |>
-  inner_join(scenarios_to_plot) |>
-  filter(day < 150, sim <= n_trajectories_plot) |>
+results |>
+  select(vaccine_scenario, int_scenario, replicate, day, reported_cases) |>
+  inner_join(scenarios_to_plot, by = c("vaccine_scenario", "int_scenario")) |>
+  filter(day < max_day, replicate <= n_trajectories_plot) |>
   collect() |>
-  mutate(date = seirMeasles::day_to_date(
-    day,
-    start_date = config$history$start_date
-  )) |>
+  mutate(date = start_date + lubridate::ddays(day - 1)) |>
   ggplot(aes(x = date)) +
-  geom_line(aes(y = reported_cases, group = sim), alpha = 0.1) +
+  geom_line(aes(y = reported_cases, group = replicate), alpha = 0.1) +
   scale_x_date(breaks = "1 month", date_labels = "%b") +
   geom_point(
     data = case_series,
@@ -74,9 +78,11 @@ ggsave("output/diagnostic_scenarios.png", bg = "white")
 
 # Table 2 ----------------------------------------------------------------------
 
-table2_data <- simulations |>
+table2_data <- results |>
+  select(vaccine_scenario, int_scenario, replicate, day, reported_cases) |>
   collect() |>
-  group_by(scenario, int_day, sim) |>
+  arrange(vaccine_scenario, int_scenario, replicate, day, reported_cases) |>
+  group_by(vaccine_scenario, int_scenario, replicate) |>
   mutate(incident_reported_cases = diff(c(0, reported_cases))) |>
   summarize(
     final_size = max(reported_cases),
@@ -85,10 +91,7 @@ table2_data <- simulations |>
   ) |>
   mutate(
     final_size_additional = final_size - 1,
-    last_date = seirMeasles::day_to_date(
-      last_day,
-      start_date = config$history$start_date
-    )
+    last_date = start_date + lubridate::ddays(last_day - 1)
   ) |>
   mutate(size_cat_additional = cut(
     final_size_additional,
@@ -98,11 +101,11 @@ table2_data <- simulations |>
   ))
 
 table2_sizes <- table2_data |>
-  count(scenario, int_day, size_cat_additional) |>
-  group_by(scenario, int_day) |>
+  count(vaccine_scenario, int_scenario, size_cat_additional) |>
+  group_by(vaccine_scenario, int_scenario) |>
   mutate(p = scales::percent(n / sum(n), 1)) |>
   ungroup() |>
-  select(scenario, int_day, size_cat_additional, p) |>
+  select(vaccine_scenario, int_scenario, size_cat_additional, p) |>
   pivot_wider(
     names_from = size_cat_additional,
     values_from = p,
@@ -110,23 +113,26 @@ table2_sizes <- table2_data |>
   )
 
 table2_last_dates <- table2_data |>
-  group_by(scenario, int_day) |>
+  group_by(vaccine_scenario, int_scenario) |>
   summarize(median_last_date = median(last_date), .groups = "drop")
 
 table2 <- full_join(
   table2_sizes, table2_last_dates,
-  by = c("scenario", "int_day")
+  by = c("vaccine_scenario", "int_scenario")
 ) |>
   mutate(
-    scenario = factor(
-      scenario,
-      levels = c("No_vaccination", "March_15", "March_08", "March_01")
+    vaccine_scenario = factor(
+      vaccine_scenario,
+      levels = c("no_vaccination", "delayed", "baseline", "early")
     ),
-    int_day = factor(int_day, levels = c("No_intervention", "March_08"))
+    int_scenario = factor(
+      int_scenario,
+      levels = c("no_intervention", "baseline")
+    )
   ) |>
-  arrange(scenario, int_day) |>
+  arrange(vaccine_scenario, int_scenario) |>
   # drop the not-meaningful combination
-  filter(!(scenario == "No_vaccination" & int_day == "March_08"))
+  filter(!(vaccine_scenario == "no_vaccination" & int_scenario == "baseline"))
 
 write_csv(table2, "output/table2.csv")
 
@@ -134,11 +140,13 @@ write_csv(table2, "output/table2.csv")
 
 figure1_data <- table2_data |>
   filter(final_size >= 3) |>
-  filter(!(scenario == "No_vaccination" & int_day == "March_08")) |>
+  filter(
+    !(vaccine_scenario == "no_vaccination" & int_scenario == "baseline")
+  ) |>
   mutate(label = interaction(
-    factor(int_day, levels = c("March_08", "No_intervention")),
-    factor(scenario, levels = c(
-      "March_01", "March_08", "March_15", "No_vaccination"
+    factor(int_scenario, levels = c("baseline", "no_intervention")),
+    factor(vaccine_scenario, levels = c(
+      "early", "baseline", "delayed", "no_vaccination"
     )),
     sep = "\n"
   ))
@@ -158,7 +166,7 @@ figure1_data |>
 ggsave("output/figure1.png", bg = "white")
 
 figure1_summary <- figure1_data |>
-  group_by(scenario, int_day) |>
+  group_by(vaccine_scenario, int_scenario) |>
   summarize(
     min = min(final_size),
     q25 = quantile(final_size, 0.25),

@@ -6,11 +6,11 @@ library(tidyverse)
 
 # number of trajectories to keep
 n_trajectories <- 100
-input_path <- "output/simulations"
+input_path <- "output/results"
 
 scenario_of_interest <- tibble(
-  scenario = "March_08",
-  int_day = "March_08"
+  vaccine_scenario = "baseline",
+  int_scenario = "baseline"
 )
 
 future::plan(future::multicore)
@@ -19,35 +19,35 @@ future::plan(future::multicore)
 
 case_series <- read_csv("input/case_series.csv")
 
-config <- seirMeasles::read_params(
-  system.file("params.yaml", package = "seirMeasles", mustWork = TRUE)
-)
-
 #' Check that there is only one scenario in the data frame
 check_one_scenario <- function(df) {
   stopifnot(nrow(df) > 0)
-  stopifnot(all(count(df, sim, day)$n == 1))
+  stopifnot(all(count(df, replicate, day)$n == 1))
   df
 }
 
+start_date <- griddleR::query_cache(input_path) |>
+  select(start_date) |>
+  distinct() |>
+  collect() |>
+  pull(start_date) |>
+  lubridate::ymd()
+
+stopifnot(length(start_date) == 1)
+
 # Read in simulation output, keeping only one scenario
-simulations <- arrow::open_dataset(input_path) |>
-  # note: Arrow erroneously reads R0 partitions as integer, not float
-  mutate(across(r_0, as.numeric)) |>
+simulations <- griddleR::query_cache(input_path) |>
   inner_join(scenario_of_interest) |>
-  select(sim, day, reported_cases) |>
+  select(replicate, day, reported_cases) |>
   collect() |>
   check_one_scenario() |>
   # add incident cases
-  arrange(sim, day) |>
-  group_by(sim) |>
+  arrange(replicate, day) |>
+  group_by(replicate) |>
   mutate(incident_reported_cases = diff(c(0, reported_cases))) |>
   ungroup() |>
   # merge in case series
-  mutate(date = seirMeasles::day_to_date(
-    day,
-    start_date = config$history$start_date
-  )) |>
+  mutate(date = start_date + lubridate::ddays(day - 1)) |>
   left_join(case_series, by = c("day", "date"))
 
 # Filter trajectories -----------------------------------------------
@@ -70,7 +70,7 @@ score_trajectory_as_of <- function(df, as_of_date) {
 #' @return vector of `sim`s
 filter_trajectories <- function(df, as_of, n = n_trajectories) {
   out <- df |>
-    nest(data = -sim) |>
+    nest(data = -replicate) |>
     mutate(
       score = map_dbl(
         data,
@@ -80,7 +80,7 @@ filter_trajectories <- function(df, as_of, n = n_trajectories) {
       rank = row_number(score)
     ) |>
     filter(rank <= n) |>
-    pull(sim)
+    pull(replicate)
 
   stopifnot(length(out) == n)
 
@@ -93,19 +93,19 @@ forecast_dates <- ymd(c(
 ))
 
 selected_trajectories <- tibble(forecast_date = forecast_dates) |>
-  mutate(sim = map(
+  mutate(replicate = map(
     forecast_dates,
     \(x) filter_trajectories(simulations, x)
   )) |>
-  unnest_longer(sim) |>
-  left_join(simulations, by = "sim", relationship = "many-to-many")
+  unnest_longer(replicate) |>
+  left_join(simulations, by = "replicate", relationship = "many-to-many")
 
 # show the trajectories by forecast date
 selected_trajectories |>
   filter(between(day, 20, 75)) |>
   ggplot(aes(date)) +
   facet_grid(rows = vars(forecast_date)) +
-  geom_line(aes(y = reported_cases, group = sim), alpha = 0.25) +
+  geom_line(aes(y = reported_cases, group = replicate), alpha = 0.25) +
   geom_point(
     # mask observed data from before forecast date
     data = filter(
@@ -158,7 +158,7 @@ table1_observed <- case_series |>
   select(date, observed_cases)
 
 table1_forecasts <- selected_trajectories |>
-  group_by(forecast_date, sim) |>
+  group_by(forecast_date, replicate) |>
   summarize(
     final_size = max(reported_cases),
     last_case_day = max(date[incident_reported_cases > 0]),
