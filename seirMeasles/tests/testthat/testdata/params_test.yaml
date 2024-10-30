@@ -1,5 +1,4 @@
-# lists in params represent a grid of values
-params:
+baseline_parameters:
   # population sizes
   pop_1: 8 # kids under 6 months
   pop_2: 13 # kids 6-12 months
@@ -33,12 +32,9 @@ params:
   ascertainment_delay: 2.5 # mean, in days
 
   # intervention parameters
-  int_day: [2024-03-11, null] # day 40 & infinite
   int_eff: 0.2
 
-# simulation history parameters
-# lists of values here are a timeseries, not a grid of values
-history:
+  # simulation history parameters
   start_date: 2024-02-01
   import_days: 2024-02-22
   vaccine_doses: [277, 276, 343]
@@ -48,3 +44,19 @@ history:
   # no. of days from administration of vaccine to onset of immunity
   # this must be a scalar, because of the way inputs work
   immunity_onset_delay: 7
+
+  sim_length: 365
+  ssa_method: exact
+
+  # replication parameters
+  seed: 13
+  n_replicates: 5
+
+grid_parameters:
+  int_scenario: [baseline, no_intervention]
+
+nested_parameters:
+  - int_scenario: baseline
+    int_day: 2024-03-11
+  - int_scenario: no_intervention
+    int_day: .na

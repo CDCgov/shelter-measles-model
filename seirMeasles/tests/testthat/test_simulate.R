@@ -1,75 +1,13 @@
 test_that("end to end test", {
-  seed <- 13
-  # number of simulations
-  n_reps <- 10
+  params_path <- test_path("testdata", "params_test.yaml")
 
-  config <- read_params(test_path("testdata", "params_test.yaml"))
-
-  parameter_grid <- expand.grid(c(
-    list(sim = 1:n_reps),
-    config$params
-  ))
-
-  manual_inputs <- generate_inputs(
-    import_days = config$history$import_days,
-    vaccine_doses = config$history$vaccine_doses,
-    vaccine_days = config$history$vaccine_days +
-      config$history$immunity_onset_delay
-  )
-
-  output <- simulate_grid(
-    parameter_grid,
-    manual_inputs = manual_inputs,
-    seed = seed
-  )
+  parameter_sets <- griddleR::read_griddle(params_path)
+  output <- purrr::map(parameter_sets, griddleR::replicated(simulate)) |>
+    dplyr::bind_rows()
 
   snapshot <- arrow::read_parquet(test_path("testdata", "snapshot.parquet"))
 
-  # some ad hoc changes to account for updates to the input
-  snapshot <- snapshot |>
-    mutate(
-      latent_period = 2.0 / thet,
-      ascertainment_delay = 1.0 / phi,
-      infectious_period = 1.0 / gam
-    ) |>
-    select(names(output))
-
   expect_equal(output, snapshot)
-})
-
-test_that("parallel simulation runs without error", {
-  # only run this test if multicore is supported
-  skip_if_not(future::supportsMulticore())
-
-  seed <- 13
-  # number of simulations
-  n_reps <- 4
-
-  config <- read_params(test_path("testdata", "params_test.yaml"))
-
-  parameter_grid <- expand.grid(c(
-    list(sim = 1:n_reps),
-    config$params
-  ))
-
-  manual_inputs <- generate_inputs(
-    import_days = config$history$import_days,
-    vaccine_doses = config$history$vaccine_doses,
-    vaccine_days = config$history$vaccine_days +
-      config$history$immunity_onset_delay
-  )
-
-  oplan <- future::plan(future::multicore(workers = 2))
-
-  expect_no_error({
-    simulate_grid(
-      parameter_grid,
-      manual_inputs = manual_inputs,
-      seed = seed
-    )
-  })
-
-  future::plan(oplan)
 })
 
 test_that("do_importations() works", {
